@@ -1,66 +1,86 @@
 * The Life of a Clojure Expression
 
+  A deep but skinny slice of Clojure innards.
+
   John Hume
   @duelinmarkers
+
+  * Code excerpts have been edited for
+  readability and to fit this screen.
+
 
 * The Life of What Clojure Expression?
 
 #+begin_src clojure
-  (defn m [v] {:foo "bar" :baz v})
-  ;           ^---- this one ---^
+  (defn m [v] {:foo "bar" :baz v} )
 #+end_src
+              ^                 ^
+              |____ this one ___|
 
 * So really,
 * The Life of a Certain Map-Literal Expression
 
-  With some discussion of variations, like
+  with minor variations:
 #+begin_src clojure
-  {:foo "bar" :baz 23} ; compile-time constant
+  {:foo "bar" :baz 23}     ; compile-time constant
 
-  {:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7
-   :h 8 :i v} ; many kvs
+  {:a 1 :b 2 :c 3 :d 4     ; 9+ kvs
+   :e 5 :f 6 :g 7 :h 8 :i v}
 #+end_src
 
 * High-level
 
-  - read
-  - compile
-  - run
+  - Read
+  - Compile
+  - Run
 
 * Read
+#+begin_src clojure
+  ;; clojure/core.clj
+  (defn read
+    ,,,
+    ([stream ,,,]
+     (clojure.lang.LispReader/read stream ,,,)))
+#+end_src
 
+* Read
 #+begin_src java
-  // LispReader.java
-  static {
-    ...
-    macros['{'] = new MapReader();
-    ...
-  }
-  ...
-  public static class MapReader extends AFn {
-    public Object invoke(Object reader, Object leftparen) {
+  // clojure/lang/LispReader.java
+  macros['{'] = new MapReader();
+  ,,,
+  static class MapReader extends AFn {
+    public Object invoke(Object reader, Object _) {
       PushbackReader r = (PushbackReader) reader;
-      Object[] a = readDelimitedList('}', r, true).toArray();
+      Object[] a = readDelimitedList('}', ,,,);
       if((a.length & 1) == 1)
-        throw Util.runtimeException("Map literal must contain an even number of forms");
+        throw Util.runtimeException("Odd forms!? NO");
       return RT.map(a);
     }
   }
-  // RT.java
+#+end_src
+
+* Read
+#+begin_src java
+  // clojure/lang/RT.java
   static public IPersistentMap map(Object... init){
     if(init == null)
       return PersistentArrayMap.EMPTY;
-    else if(init.length <= PersistentArrayMap.HASHTABLE_THRESHOLD)
+    else if(init.length <= 16)
       return PersistentArrayMap.createWithCheck(init);
     return PersistentHashMap.createWithCheck(init);
   }
-  // PersistentArrayMap.java
-  static public PersistentArrayMap createWithCheck(Object[] init){
-    for(int i=0; i < init.length; i += 2) {
-      for(int j=i+2; j < init.length; j += 2) {
-        if(equalKey(init[i], init[j]))
-          throw new IllegalArgumentException("Duplicate key: " + init[i]);
-        }
-    return new PersistentArrayMap(init);
+#+end_src
+
+* Read
+#+begin_src java
+  // clojure/lang/PersistentArrayMap.java
+  static PersistentArrayMap createWithCheck(Object[] init){
+   for(int i=0; i < init.length; i += 2) {
+    for(int j=i+2; j < init.length; j += 2) {
+     if(equalKey(init[i], init[j]))
+      throw new IllegalArgumentException("Dupe:" + init[i]);
+    }
+   }
+   return new PersistentArrayMap(init);
   }
 #+end_src
