@@ -1,11 +1,11 @@
 * The Life of a Clojure Expression
 
-  A deep but skinny slice of Clojure innards.
+  A deep but skinny slice of Clojure internals
 
-  John Hume
+  John Hume\\
   @duelinmarkers
 
-  * Code excerpts have been edited for
+  Code excerpts have been edited for
   readability and to fit this screen.
 
 
@@ -13,9 +13,9 @@
 
 #+begin_src clojure
   (defn m [v] {:foo "bar" :baz v} )
+  ;;          ^                 ^
+  ;;          |____ this one ___|
 #+end_src
-              ^                 ^
-              |____ this one ___|
 
 * So really,
 * The Life of a Certain Map-Literal Expression
@@ -34,7 +34,7 @@
   - Compile
   - Run
 
-* Read
+* Read - clojure.core/read
 #+begin_src clojure
   ;; clojure/core.clj
   (defn read
@@ -43,7 +43,7 @@
      (clojure.lang.LispReader/read stream ,,,)))
 #+end_src
 
-* Read
+* Read - LispReader
 #+begin_src java
   // clojure/lang/LispReader.java
   macros['{'] = new MapReader();
@@ -59,7 +59,7 @@
   }
 #+end_src
 
-* Read
+* Read - RT
 #+begin_src java
   // clojure/lang/RT.java
   static public IPersistentMap map(Object... init){
