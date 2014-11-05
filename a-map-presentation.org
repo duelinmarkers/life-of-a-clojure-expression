@@ -31,8 +31,8 @@
 * High-level
 
   - Read
-  - Compile
-  - Run
+  - Analyze
+  - Eval
 
 * Read - clojure.core/read
 #+begin_src clojure
@@ -82,5 +82,79 @@
     }
    }
    return new PersistentArrayMap(init);
+  }
+#+end_src
+
+* Analyze + Eval
+#+begin_src java
+  // clojure/lang/Compiler.java
+  public static Object eval(Object form, boolean freshLoader) {
+    ,,,
+    form = macroexpand(form);
+    if(form instanceof ISeq && Util.equals(RT.first(form), DO)) { ,,, }
+    else if((form instanceof IType) ||
+            (form instanceof IPersistentCollection
+             && !(RT.first(form) instanceof Symbol
+                  && ((Symbol) RT.first(form)).name.startsWith("def"))))
+    {
+      ObjExpr fexpr = (ObjExpr) analyze(C.EXPRESSION,
+                                        RT.list(FN, PersistentVector.EMPTY, form),
+                                        "eval" + RT.nextID());
+      IFn fn = (IFn) fexpr.eval();
+      return fn.invoke();
+    } else {
+      Expr expr = analyze(C.EVAL, form);
+      return expr.eval();
+    }
+  }
+#+end_src
+
+* Analyze + Eval
+#+begin_src java
+  // clojure/lang/Compiler.java
+  private static Expr analyze(C context, Object form, String name) {
+    Class fclass = form.getClass();
+    if(fclass == Symbol.class) { ,,, }
+    ,,,
+    else if(form instanceof IPersistentMap)
+      return MapExpr.parse(context, (IPersistentMap) form);
+  }
+#+end_src
+
+* Analyze + Eval
+#+begin_src java
+  public static class MapExpr implements Expr{
+    // ...
+    static public Expr parse(C context, IPersistentMap form) {
+      IPersistentVector keyvals = PersistentVector.EMPTY;
+      // elided constantness and uniqueness flags
+      for(ISeq s = RT.seq(form); s != null; s = s.next()) {
+        IMapEntry e = (IMapEntry) s.first();
+        Expr k = analyze(context == C.EVAL ? context : C.EXPRESSION, e.key());
+        Expr v = analyze(context == C.EVAL ? context : C.EXPRESSION, e.val());
+        keyvals = (IPersistentVector) keyvals.cons(k);
+        keyvals = (IPersistentVector) keyvals.cons(v);
+        // elided constantness, uniqueness checks
+      }
+      Expr ret = new MapExpr(keyvals);
+      // elided: have metadata? wrap in MetaExpr.
+      // elided: non-unique constant keys? throw.
+      // elided: ALL kvs constant? unpack into fresh map, wrap in ConstantExpr.
+      return ret;
+    }
+  }
+#+end_src
+
+* Analyze + Eval
+#+begin_src java
+  public static class MapExpr implements Expr{
+    // ...
+    public Object eval() {
+      Object[] ret = new Object[keyvals.count()];
+      for(int i = 0; i < keyvals.count(); i++)
+        ret[i] = ((Expr) keyvals.nth(i)).eval();
+      return RT.map(ret);
+    }
+    // ...
   }
 #+end_src
