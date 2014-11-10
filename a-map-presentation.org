@@ -196,6 +196,7 @@ types: KeywordExpr,
        LocalBindingExpr.
 
 FnExpr#eval calls our MapExpr#emit.
+
 * Analyze + Eval
 
 MapExpr emits bytecode for a static method call,
@@ -211,9 +212,11 @@ When keys are not known at compile time:
   static public IPersistentMap map(Object... init)
 #+end_src
 
+* Analysis + Compilation done!
+
 * Runtime - call site
 
-Some clj fn elsewhere has this:
+Some clj fn has this:
 #+begin_src clojure
   (m "my val")
 #+end_src
@@ -226,7 +229,7 @@ That's equivalent to (Java)
 
 * Runtime - our fn
 
-a_map$m#invoke is equivalent to
+m#invoke is equivalent to
 #+begin_src java
   public Object invoke(Object arg) {
     return RT.mapUniqueKeys(
