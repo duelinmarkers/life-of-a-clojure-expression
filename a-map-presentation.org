@@ -1,18 +1,24 @@
 * The Life of a Clojure Expression
 
-  A deep but skinny slice of Clojure internals
+  A narrow slice of Clojure internals
 
-  John Hume\\
-  @duelinmarkers
+  John Hume,
+  @duelinmarkers,
+  http://mobro.co/hume (or duelinmarkers.com)
+
+  Austin Clojure Meetup, 10 Movember, 2014
 
   Code excerpts have been edited for
   readability and to fit this screen.
 
 
+
+---------------------------------------->:[--------:(---:|---:) <- ideal bottom-right of 1st slide in org-present mode.
+
 * The Life of What Clojure Expression?
 
 #+begin_src clojure
-  (defn m [v] {:foo "bar" :baz v} )
+  (defn m [v] {:foo "bar" :baz v})
   ;;          ^                 ^
   ;;          |____ this one ___|
 #+end_src
@@ -20,20 +26,23 @@
 * So really,
 * The Life of a Certain Map-Literal Expression
 
-  with minor variations:
+  with some discussion of minor variations:
 #+begin_src clojure
-  {:foo "bar" :baz 23}     ; compile-time constant
+  {:foo "bar" :baz 23}     ; a constant
 
-  {:a 1 :b 2 :c 3 :d 4     ; 9+ kvs
+  {v "bar" :baz 23} ; w/ runtime-calculated k
+
+  {:a 1 :b 2 :c 3 :d 4     ; w/ 9+ kvs
    :e 5 :f 6 :g 7 :h 8 :i v}
 #+end_src
 
 * High-level
 
   - Read
-  - Analyze
   - Eval
-
+    - Analyze
+    - Emit
+    - Runtime
 * Read - clojure.core/read
 #+begin_src clojure
   ;; clojure/core.clj
@@ -85,21 +94,27 @@
   }
 #+end_src
 
+* Read is now done
+
+We now have the equivalent of
+#+begin_src clojure
+  '(defn m [v] {:foo "bar" :baz v})
+#+end_src
+
+
 * Analyze + Eval
 #+begin_src java
   // clojure/lang/Compiler.java
   public static Object eval(Object form, boolean freshLoader) {
     ,,,
     form = macroexpand(form);
-    if(form instanceof ISeq && Util.equals(RT.first(form), DO)) { ,,, }
-    else if((form instanceof IType) ||
-            (form instanceof IPersistentCollection
-             && !(RT.first(form) instanceof Symbol
-                  && ((Symbol) RT.first(form)).name.startsWith("def"))))
+    if(/* form is a (do ...) */ form instanceof ISeq && Util.equals(RT.first(form), DO))
+       { /* eval each body form,
+            returning the last. */ }
+    else if(/* form is some non-def bit of code */ (form instanceof IType) || (form instanceof IPersistentCollection && !(RT.first(form) instanceof Symbol && ((Symbol) RT.first(form)).name.startsWith("def"))))
     {
-      ObjExpr fexpr = (ObjExpr) analyze(C.EXPRESSION,
-                                        RT.list(FN, PersistentVector.EMPTY, form),
-                                        "eval" + RT.nextID());
+      /* wrap it in a 0-arity fn and invoke it */
+      ObjExpr fexpr = (ObjExpr) analyze(C.EXPRESSION, RT.list(FN, PersistentVector.EMPTY, form), "eval" + RT.nextID());
       IFn fn = (IFn) fexpr.eval();
       return fn.invoke();
     } else {
@@ -111,11 +126,13 @@
 
 * Analyze + Eval
 #+begin_src java
-  // clojure/lang/Compiler.java
   private static Expr analyze(C context, Object form, String name) {
     Class fclass = form.getClass();
     if(fclass == Symbol.class) { ,,, }
-    ,,,
+    else if(fclass == Keyword.class) { ,,, }
+    /* etc, etc */
+    else if(form instanceof ISeq)
+      return analyzeSeq(context, (ISeq) form, name);
     else if(form instanceof IPersistentMap)
       return MapExpr.parse(context, (IPersistentMap) form);
   }
@@ -123,38 +140,131 @@
 
 * Analyze + Eval
 #+begin_src java
+  private static Expr analyzeSeq(C context, ISeq form, String name) {
+    Object op = RT.first(form);
+    IFn inline = isInline(op, RT.count(RT.next(form)));
+    if(inline != null)
+      return analyze(context, preserveTag(form, inline.applyTo(RT.next(form))));
+    if(op.equals(FN))
+      return FnExpr.parse(context, form, name); // our fn
+    IParser p;
+    else if((p = (IParser) specials.valAt(op)) != null)
+      return p.parse(context, form); // our def
+    else
+      return InvokeExpr.parse(context, form);
+  }
+#+end_src
+
+* Analyze + Eval
+
+Eval of DefExpr evals its init expression.
+Eval of FnExpr compiles the fn-body,
+each form of which gets analyzed
+and emitted (as bytecode via calls to ASM).
+
+Trust me.
+
+* Analyze + Eval
+#+begin_src java
   public static class MapExpr implements Expr{
+	public final IPersistentVector keyvals;
     // ...
     static public Expr parse(C context, IPersistentMap form) {
       IPersistentVector keyvals = PersistentVector.EMPTY;
-      // elided constantness and uniqueness flags
       for(ISeq s = RT.seq(form); s != null; s = s.next()) {
         IMapEntry e = (IMapEntry) s.first();
-        Expr k = analyze(context == C.EVAL ? context : C.EXPRESSION, e.key());
-        Expr v = analyze(context == C.EVAL ? context : C.EXPRESSION, e.val());
+        Expr k = analyze(context, e.key());
+        Expr v = analyze(context, e.val());
         keyvals = (IPersistentVector) keyvals.cons(k);
         keyvals = (IPersistentVector) keyvals.cons(v);
-        // elided constantness, uniqueness checks
+        // elided constantness, k uniqueness checks
       }
       Expr ret = new MapExpr(keyvals);
-      // elided: have metadata? wrap in MetaExpr.
-      // elided: non-unique constant keys? throw.
-      // elided: ALL kvs constant? unpack into fresh map, wrap in ConstantExpr.
+      // elided special cases:
+      // metadata, non-unique keys, all constants
       return ret;
     }
   }
 #+end_src
 
 * Analyze + Eval
+
+We now have a MapExpr with a vector of keyvals,
+types: KeywordExpr,
+       StringExpr,
+       KeywordExpr,
+       LocalBindingExpr.
+
+FnExpr#eval calls our MapExpr#emit.
+* Analyze + Eval
+
+MapExpr emits bytecode for a static method call,
+passing its keyvals as an array.
+
+When keys are compile-time constant, hence known-unique:
 #+begin_src java
-  public static class MapExpr implements Expr{
-    // ...
-    public Object eval() {
-      Object[] ret = new Object[keyvals.count()];
-      for(int i = 0; i < keyvals.count(); i++)
-        ret[i] = ((Expr) keyvals.nth(i)).eval();
-      return RT.map(ret);
-    }
-    // ...
+  // clojure/lang/RT.java
+  static public IPersistentMap mapUniqueKeys(Object... init)
+#+end_src
+When keys are not known at compile time:
+#+begin_src java
+  static public IPersistentMap map(Object... init)
+#+end_src
+
+* Runtime - call site
+
+Some clj fn elsewhere has this:
+#+begin_src clojure
+  (m "my val")
+#+end_src
+That's equivalent to (Java)
+#+begin_src java
+  M_VAR               // static const in caller's class
+    .getRawRoot()     // reads a volatile
+    .invoke("my val") // invokeinterface
+#+end_src
+
+* Runtime - our fn
+
+a_map$m#invoke is equivalent to
+#+begin_src java
+  public Object invoke(Object arg) {
+    return RT.mapUniqueKeys(
+      new Object[] {FOO_KW, "bar", BAZ_KW, arg});
   }
 #+end_src
+
+* Runtime - mapUniqueKeys
+#+begin_src java
+  // clojure/lang/RT.java
+  static public IPersistentMap mapUniqueKeys(Object... init){
+    if(init == null)
+      return PersistentArrayMap.EMPTY;
+    else if(init.length <= 16)
+      return new PersistentArrayMap(init);
+    return PersistentHashMap.create(init);
+  }
+#+end_src
+
+* Runtime - exciting conclusion!
+#+begin_src java
+  public PersistentArrayMap(Object[] init){
+    this.array = init;
+    this._meta = null;
+  }
+#+end_src
+
+* That's It
+
+  Questions?
+
+* Tangents
+
+  - There's no supported API for creating small maps
+    with compile-time constant keys as efficiently as
+    the literal syntax.
+    (c.c/array-map uses createAsIfByAssoc.)
+
+  - A PersistentArrayMap will upgrade itself to a
+    PersistentHashMap as new keys are assoc'd in, but
+    a PersistentHashMap will never downgrade itself.
