@@ -256,6 +256,7 @@ m#invoke is equivalent to
     this._meta = null;
   }
 #+end_src
+Not exciting at all.
 
 * That's It
 
@@ -265,7 +266,8 @@ m#invoke is equivalent to
 
   - clojure.tools.analyzer isn't as useful as I thought
     it would be for looking at the result of compiling
-    literal expressions.
+    literal expressions. (Doesn't show implementation
+    details of literals.)
 
   - There's no supported API for creating small maps
     with compile-time constant keys as efficiently as
