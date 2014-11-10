@@ -263,6 +263,10 @@ m#invoke is equivalent to
 
 * Tangents
 
+  - clojure.tools.analyzer isn't as useful as I thought
+    it would be for looking at the result of compiling
+    literal expressions.
+
   - There's no supported API for creating small maps
     with compile-time constant keys as efficiently as
     the literal syntax.
