@@ -4,9 +4,9 @@
 
   John Hume,
   @duelinmarkers,
-  http://mobro.co/hume (or duelinmarkers.com)
+  http://duelinmarkers.com
 
-  Austin Clojure Meetup, 10 Movember, 2014
+
 
   Code excerpts have been edited for
   readability and to fit this screen.
@@ -18,9 +18,10 @@
 * The Life of What Clojure Expression?
 
 #+begin_src clojure
-  (defn m [v] {:foo "bar" :baz v})
-  ;;          ^                 ^
-  ;;          |____ this one ___|
+  (defn m [v]
+    {:foo "bar" :baz v})
+    ^____ this one ___^
+
 #+end_src
 
 * So really,
@@ -32,7 +33,7 @@
 
   {v "bar" :baz 23} ; w/ runtime-calculated k
 
-  {:a 1 :b 2 :c 3 :d 4     ; w/ 9+ kvs
+  {:a 1 :b 2 :c 3 :d 4     ; w/ (> (count kvs) 8)
    :e 5 :f 6 :g 7 :h 8 :i v}
 #+end_src
 
@@ -43,18 +44,22 @@
     - Analyze
     - Emit
     - Runtime
+
 * Read - clojure.core/read
 #+begin_src clojure
   ;; clojure/core.clj
   (defn read
     ,,,
-    ([stream ,,,]
-     (clojure.lang.LispReader/read stream ,,,)))
+    ([stream eof-error? ,,,]
+     (clojure.lang.LispReader/read stream
+                                   eof-error?
+                                   ,,,)))
 #+end_src
 
 * Read - LispReader
 #+begin_src java
   // clojure/lang/LispReader.java
+  static IFn[] macros = new IFn[256];
   macros['{'] = new MapReader();
   ,,,
   static class MapReader extends AFn {
@@ -62,7 +67,8 @@
       PushbackReader r = (PushbackReader) reader;
       Object[] a = readDelimitedList('}', ,,,);
       if((a.length & 1) == 1)
-        throw Util.runtimeException("Odd forms!? NO");
+        throw Util.runtimeException(
+              "Odd # of forms!");
       return RT.map(a);
     }
   }
@@ -87,7 +93,8 @@
    for(int i=0; i < init.length; i += 2) {
     for(int j=i+2; j < init.length; j += 2) {
      if(equalKey(init[i], init[j]))
-      throw new IllegalArgumentException("Dupe:" + init[i]);
+      throw new IllegalArgumentException(
+            "Duplicate key:" + init[i]);
     }
    }
    return new PersistentArrayMap(init);
@@ -99,6 +106,13 @@
 We now have the equivalent of
 #+begin_src clojure
   '(defn m [v] {:foo "bar" :baz v})
+#+end_src
+
+* Analyze + Eval
+#+begin_src clojure
+  ;; clojure/core.clj
+  (defn eval [form]
+    (clojure.lang.Compiler/eval form))
 #+end_src
 
 
