@@ -37,22 +37,21 @@
    :e 5 :f 6 :g 7 :h 8 :i v}
 #+end_src
 
-* High-level
+* High-level: the "RE" in "REPL"
 
-  - Read
-  - Eval
-    - Analyze
-    - Emit
-    - Runtime
+  - clojure.core/read, LispReader.read
+  - clojure.core/eval, Compiler.eval
+    - Compiler.analyze
+    - Compiler$Expr.emit
+  - Runtime!
 
 * Read - clojure.core/read
 #+begin_src clojure
   ;; clojure/core.clj
   (defn read
     ,,,
-    ([stream eof-error? ,,,]
+    ([stream ,,,]
      (clojure.lang.LispReader/read stream
-                                   eof-error?
                                    ,,,)))
 #+end_src
 
@@ -101,6 +100,14 @@
   }
 #+end_src
 
+* Read
+#+begin_src java
+  public PersistentArrayMap(Object[] init){
+    this.array = init;
+    this._meta = null;
+  }
+#+end_src
+
 * Read is now done
 
 We now have the equivalent of
@@ -114,7 +121,6 @@ We now have the equivalent of
   (defn eval [form]
     (clojure.lang.Compiler/eval form))
 #+end_src
-
 
 * Analyze + Eval
 #+begin_src java
@@ -142,7 +148,7 @@ We now have the equivalent of
 #+begin_src java
   private static Expr analyze(C context, Object form, String name) {
     Class fclass = form.getClass();
-    if(fclass == Symbol.class) { ,,, }
+    if(fclass == Symbol.class) { return analyzeSymbol((Symbol) form); }
     else if(fclass == Keyword.class) { ,,, }
     /* etc, etc */
     else if(form instanceof ISeq)
@@ -169,19 +175,19 @@ We now have the equivalent of
   }
 #+end_src
 
-* Analyze + Eval
+* Analyze + Eval Hand-Waving
 
 Eval of DefExpr evals its init expression.
 Eval of FnExpr compiles the fn-body,
-each form of which gets analyzed
-and emitted (as bytecode via calls to ASM).
+each Expr of which gets analyzed
+and emitted.
 
 Trust me.
 
-* Analyze + Eval
+* Analyze + Eval: MapExpr.parse
 #+begin_src java
   public static class MapExpr implements Expr{
-	public final IPersistentVector keyvals;
+    public final IPersistentVector keyvals;
     // ...
     static public Expr parse(C context, IPersistentMap form) {
       IPersistentVector keyvals = PersistentVector.EMPTY;
@@ -211,22 +217,44 @@ types: KeywordExpr,
 
 FnExpr#eval calls our MapExpr#emit.
 
-* Analyze + Eval
-
-MapExpr emits bytecode for a static method call,
-passing its keyvals as an array.
-
-When keys are compile-time constant, hence known-unique:
+* Analyze + Eval: MapExpr.emit
 #+begin_src java
-  // clojure/lang/RT.java
-  static public IPersistentMap mapUniqueKeys(Object... init)
-#+end_src
-When keys are not known at compile time:
-#+begin_src java
-  static public IPersistentMap map(Object... init)
+  public static class MapExpr implements Expr{
+    public final IPersistentVector keyvals;
+    final static Method mapMethod = Method.getMethod(
+            "clojure.lang.IPersistentMap map(Object[])");
+    final static Method mapUniqueKeysMethod = Method.getMethod(
+            "clojure.lang.IPersistentMap mapUniqueKeys(Object[])");
+
+    public void emit(C context, ObjExpr objx, GeneratorAdapter gen){
+      // elided: iterate through keyvals to determine:
+      boolean allKeysConstant = /* is every k instanceof LiteralExpr? */;
+      boolean allConstantKeysUnique = /* no two literal k.eval() results equal */;
+      // ...
+      MethodExpr.emitArgsAsArray(keyvals, objx, gen);
+      if((allKeysConstant && allConstantKeysUnique) || (keyvals.count() <= 2))
+        gen.invokeStatic(RT_TYPE, mapUniqueKeysMethod);
+      else
+        gen.invokeStatic(RT_TYPE, mapMethod);
+      if(context == C.STATEMENT) gen.pop();
+    }
+  }
 #+end_src
 
-* Analysis + Compilation done!
+* Analyze + Eval: Our fn is compiled!
+
+We now have the equivalent of this Java class:
+#+begin_src java
+public final class a_map$m extends clojure.lang.AFunction {
+  public static final clojure.lang.Keyword FOO = RT.keyword(null, "foo");
+  public static final clojure.lang.Keyword BAZ = RT.keyword(null, "baz");
+
+  @Override
+  public Object invoke(Object) {
+    return RT.mapUniqueKeys(new Object[] {FOO, "bar", BAZ, arg});
+  }
+}
+#+end_src
 
 * Runtime - call site
 
@@ -241,16 +269,6 @@ That's equivalent to (Java)
     .invoke("my val") // invokeinterface
 #+end_src
 
-* Runtime - our fn
-
-m#invoke is equivalent to
-#+begin_src java
-  public Object invoke(Object arg) {
-    return RT.mapUniqueKeys(
-      new Object[] {FOO_KW, "bar", BAZ_KW, arg});
-  }
-#+end_src
-
 * Runtime - mapUniqueKeys
 #+begin_src java
   // clojure/lang/RT.java
@@ -262,15 +280,6 @@ m#invoke is equivalent to
     return PersistentHashMap.create(init);
   }
 #+end_src
-
-* Runtime - exciting conclusion!
-#+begin_src java
-  public PersistentArrayMap(Object[] init){
-    this.array = init;
-    this._meta = null;
-  }
-#+end_src
-Not exciting at all.
 
 * That's It
 
