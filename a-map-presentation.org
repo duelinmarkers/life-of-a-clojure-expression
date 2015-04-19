@@ -1,6 +1,6 @@
 * The Life of a Clojure Expression
 
-  A narrow slice of Clojure internals
+  A Quick Tour of Clojure Internals
 
   John Hume,
   @duelinmarkers,
@@ -13,7 +13,9 @@
 
 
 
----------------------------------------->:[--------:(---:|---:) <- ideal bottom-right of 1st slide in org-present mode.
+
+
+----------------------------------->:[-----:(---:|---:) <- ideal bottom-right of 1st slide in org-present mode.
 
 * The Life of What Clojure Expression?
 
@@ -27,14 +29,16 @@
 * So really,
 * The Life of a Certain Map-Literal Expression
 
-  with some discussion of minor variations:
+  plus some discussion of minor variations:
 #+begin_src clojure
-  {:foo "bar" :baz 23}     ; a constant
+  ;; a constant
+  {:foo "bar" :baz 23}
 
-  {v "bar" :baz 23} ; w/ runtime-calculated k
+  ;; w/ runtime-calculated k
+  {v "bar" :baz 23}
 
-  {:a 1 :b 2 :c 3 :d 4     ; w/ (> (count kvs) 8)
-   :e 5 :f 6 :g 7 :h 8 :i v}
+  ;; w/ (> (count kvs) 8)
+  {:a 1 :b 2 :c 3 :d 4 :e 5 :f 6 :g 7 :h 8 :i v}
 #+end_src
 
 * High-level: the "RE" in "REPL"
@@ -57,47 +61,47 @@
 
 * Read - LispReader
 #+begin_src java
-  // clojure/lang/LispReader.java
-  static IFn[] macros = new IFn[256];
-  macros['{'] = new MapReader();
-  ,,,
-  static class MapReader extends AFn {
-    public Object invoke(Object reader, Object _) {
-      PushbackReader r = (PushbackReader) reader;
-      Object[] a = readDelimitedList('}', ,,,);
-      if((a.length & 1) == 1)
-        throw Util.runtimeException(
-              "Odd # of forms!");
-      return RT.map(a);
-    }
+// clojure/lang/LispReader.java
+static IFn[] macros = new IFn[256];
+macros['{'] = new MapReader();
+,,,
+static class MapReader extends AFn {
+  public Object invoke(Object reader, Object _) {
+    PushbackReader r = (PushbackReader) reader;
+    Object[] a = readDelimitedList('}', ,,,);
+    if((a.length & 1) == 1)
+      throw Util.runtimeException(
+            "Odd # of forms!");
+    return RT.map(a);
   }
+}
 #+end_src
 
 * Read - RT
 #+begin_src java
-  // clojure/lang/RT.java
-  static public IPersistentMap map(Object... init){
-    if(init == null)
-      return PersistentArrayMap.EMPTY;
-    else if(init.length <= 16)
-      return PersistentArrayMap.createWithCheck(init);
-    return PersistentHashMap.createWithCheck(init);
-  }
+// clojure/lang/RT.java
+static public IPersistentMap map(Object... init){
+  if(init == null)
+    return PersistentArrayMap.EMPTY;
+  else if(init.length <= 16)
+    return PersistentArrayMap.createWithCheck(init);
+  return PersistentHashMap.createWithCheck(init);
+}
 #+end_src
 
 * Read
 #+begin_src java
-  // clojure/lang/PersistentArrayMap.java
-  static PersistentArrayMap createWithCheck(Object[] init){
-   for(int i=0; i < init.length; i += 2) {
-    for(int j=i+2; j < init.length; j += 2) {
-     if(equalKey(init[i], init[j]))
-      throw new IllegalArgumentException(
-            "Duplicate key:" + init[i]);
-    }
-   }
-   return new PersistentArrayMap(init);
+// clojure/lang/PersistentArrayMap.java
+static PersistentArrayMap createWithCheck(Object[] init){
+ for(int i=0; i < init.length; i += 2) {
+  for(int j=i+2; j < init.length; j += 2) {
+   if(equalKey(init[i], init[j]))
+    throw new IllegalArgumentException(
+          "Duplicate key:" + init[i]);
   }
+ }
+ return new PersistentArrayMap(init);
+}
 #+end_src
 
 * Read
@@ -122,60 +126,94 @@ We now have the equivalent of
     (clojure.lang.Compiler/eval form))
 #+end_src
 
-* Analyze + Eval
+* Analyze + Eval: pseudo-code
+
+Before we look at the real thing:
 #+begin_src java
-  // clojure/lang/Compiler.java
-  public static Object eval(Object form, boolean freshLoader) {
-    ,,,
-    form = macroexpand(form);
-    if(/* form is a (do ...) */ form instanceof ISeq && Util.equals(RT.first(form), DO))
-       { /* eval each body form,
-            returning the last. */ }
-    else if(/* form is some non-def bit of code */ (form instanceof IType) || (form instanceof IPersistentCollection && !(RT.first(form) instanceof Symbol && ((Symbol) RT.first(form)).name.startsWith("def"))))
-    {
-      /* wrap it in a 0-arity fn and invoke it */
-      ObjExpr fexpr = (ObjExpr) analyze(C.EXPRESSION, RT.list(FN, PersistentVector.EMPTY, form), "eval" + RT.nextID());
-      IFn fn = (IFn) fexpr.eval();
-      return fn.invoke();
-    } else {
-      Expr expr = analyze(C.EVAL, form);
-      return expr.eval();
-    }
+  Object eval(form) {
+    form = macroexpand(form)
+    Expr expr = analyze(form)
+    return expr.eval()
   }
 #+end_src
 
-* Analyze + Eval
+* Analyze + Eval: Compiler$Expr
+
+What's an Expr?
 #+begin_src java
-  private static Expr analyze(C context, Object form, String name) {
-    Class fclass = form.getClass();
-    if(fclass == Symbol.class) { return analyzeSymbol((Symbol) form); }
-    else if(fclass == Keyword.class) { ,,, }
-    /* etc, etc */
-    else if(form instanceof ISeq)
-      return analyzeSeq(context, (ISeq) form, name);
-    else if(form instanceof IPersistentMap)
-      return MapExpr.parse(context, (IPersistentMap) form);
-  }
+ interface Expr {
+  // Often:
+  // static Expr parse(Object form);
+  Object eval();
+  void emit(C ctx, ObjExpr objx, GeneratorAdapter gen);
+  boolean hasJavaClass();
+  Class getJavaClass();
+ }
 #+end_src
 
-* Analyze + Eval
+* Analyze + Eval: "real" eval
 #+begin_src java
-  private static Expr analyzeSeq(C context, ISeq form, String name) {
-    Object op = RT.first(form);
-    IFn inline = isInline(op, RT.count(RT.next(form)));
-    if(inline != null)
-      return analyze(context, preserveTag(form, inline.applyTo(RT.next(form))));
-    if(op.equals(FN))
-      return FnExpr.parse(context, form, name); // our fn
-    IParser p;
-    else if((p = (IParser) specials.valAt(op)) != null)
-      return p.parse(context, form); // our def
-    else
-      return InvokeExpr.parse(context, form);
+// clojure/lang/Compiler.java
+public static Object eval(Object form, boolean fresh) {
+  ,,,
+  form = macroexpand(form);
+  if(/* form is a (do ...) */ form instanceof ISeq && Util.equals(RT.first(form), DO))
+  { /* eval each form, returning the last. */ }
+  else if(/* form is some non-def bit of code */ (form instanceof IType) || (form instanceof IPersistentCollection && !(RT.first(form) instanceof Symbol && ((Symbol) RT.first(form)).name.startsWith("def"))))
+  {
+   /* wrap it in a 0-arity fn and invoke */
+   ObjExpr fexpr = (ObjExpr) analyze(C.EXPRESSION,
+     RT.list(FN, PersistentVector.EMPTY, form), "eval" + RT.nextID());
+   IFn fn = (IFn) fexpr.eval();
+   return fn.invoke();
+  } else {
+   Expr expr = analyze(C.EVAL, form);
+   return expr.eval();
   }
+}
 #+end_src
 
-* Analyze + Eval Hand-Waving
+* Analyze + Eval: Sidebar
+
+  eval's macroexpand will turn our
+#+begin_src clojure
+  (defn m [v] {:foo "bar" :baz v})
+#+end_src
+  into (more or less)
+#+begin_src clojure
+  (def m (fn [v] {:foo "bar" :baz v}))
+#+end_src
+
+* Analyze + Eval: analyze
+#+begin_src java
+static Expr analyze(C ctx, Object form, String name) {
+ Class fclass = form.getClass();
+ if(fclass == Symbol.class) { return analyzeSymbol((Symbol) form); }
+ else if(fclass == Keyword.class) { ,,, }
+ /* etc, etc */
+ else if(form instanceof ISeq)
+  return analyzeSeq(ctx, (ISeq) form, name);
+ else if(form instanceof IPersistentMap)
+  return MapExpr.parse(ctx, (IPersistentMap) form);
+}
+#+end_src
+
+* Analyze + Eval: analyzeSeq
+#+begin_src java
+static Expr analyzeSeq(C ctx, ISeq form, String name) {
+  Object op = RT.first(form);
+  /* elided nil-check, inline */
+  if(op.equals(FN))
+    return FnExpr.parse(ctx, form, name); // our fn
+  IParser p;
+  else if((p = (IParser) specials.valAt(op)) != null)
+    return p.parse(ctx, form); // our def
+  else
+    return InvokeExpr.parse(ctx, form);
+}
+#+end_src
+
+* Analyze + Eval: Hand-Waving
 
 Eval of DefExpr evals its init expression.
 Eval of FnExpr compiles the fn-body,
@@ -186,25 +224,25 @@ Trust me.
 
 * Analyze + Eval: MapExpr.parse
 #+begin_src java
-  public static class MapExpr implements Expr{
-    public final IPersistentVector keyvals;
-    // ...
-    static public Expr parse(C context, IPersistentMap form) {
-      IPersistentVector keyvals = PersistentVector.EMPTY;
-      for(ISeq s = RT.seq(form); s != null; s = s.next()) {
-        IMapEntry e = (IMapEntry) s.first();
-        Expr k = analyze(context, e.key());
-        Expr v = analyze(context, e.val());
-        keyvals = (IPersistentVector) keyvals.cons(k);
-        keyvals = (IPersistentVector) keyvals.cons(v);
-        // elided constantness, k uniqueness checks
-      }
-      Expr ret = new MapExpr(keyvals);
-      // elided special cases:
-      // metadata, non-unique keys, all constants
-      return ret;
-    }
+public static class MapExpr implements Expr{
+ public final IPersistentVector keyvals;
+ // ...
+ static public Expr parse(C ctx, IPersistentMap form) {
+  IPersistentVector keyvals = PersistentVector.EMPTY;
+  for(ISeq s = RT.seq(form); s != null; s = s.next()) {
+   IMapEntry e = (IMapEntry) s.first();
+   Expr k = analyze(ctx, e.key());
+   Expr v = analyze(ctx, e.val());
+   keyvals = (IPersistentVector) keyvals.cons(k);
+   keyvals = (IPersistentVector) keyvals.cons(v);
+   // elided constantness, k uniqueness checks
   }
+  Expr ret = new MapExpr(keyvals);
+  // elided special cases:
+  // metadata, non-unique keys, all constants
+  return ret;
+ }
+}
 #+end_src
 
 * Analyze + Eval
@@ -219,40 +257,45 @@ FnExpr#eval calls our MapExpr#emit.
 
 * Analyze + Eval: MapExpr.emit
 #+begin_src java
-  public static class MapExpr implements Expr{
-    public final IPersistentVector keyvals;
-    final static Method mapMethod = Method.getMethod(
-            "clojure.lang.IPersistentMap map(Object[])");
-    final static Method mapUniqueKeysMethod = Method.getMethod(
-            "clojure.lang.IPersistentMap mapUniqueKeys(Object[])");
+public static class MapExpr implements Expr{
+ public final IPersistentVector keyvals;
+ static Method mapMethod = Method.getMethod(
+   "clojure.lang.IPersistentMap map(Object[])");
+ static Method mapUniqueKeysMethod = Method.getMethod(
+   "clojure.lang.IPersistentMap mapUniqueKeys(Object[])");
 
-    public void emit(C context, ObjExpr objx, GeneratorAdapter gen){
-      // elided: iterate through keyvals to determine:
-      boolean allKeysConstant = /* is every k instanceof LiteralExpr? */;
-      boolean allConstantKeysUnique = /* no two literal k.eval() results equal */;
-      // ...
-      MethodExpr.emitArgsAsArray(keyvals, objx, gen);
-      if((allKeysConstant && allConstantKeysUnique) || (keyvals.count() <= 2))
-        gen.invokeStatic(RT_TYPE, mapUniqueKeysMethod);
-      else
-        gen.invokeStatic(RT_TYPE, mapMethod);
-      if(context == C.STATEMENT) gen.pop();
-    }
-  }
+ public void emit(C ctx, ObjExpr objx, GeneratorAdapter gen){
+  // elided: iterate through keyvals to determine:
+  boolean allKeysConstant = /* is every k instanceof LiteralExpr? */;
+  boolean allConstantKeysUnique = /* no two literal k.eval() results equal */;
+  // ...
+  MethodExpr.emitArgsAsArray(keyvals, objx, gen);
+  if((allKeysConstant && allConstantKeysUnique)
+     || (keyvals.count() <= 2))
+   gen.invokeStatic(RT_TYPE, mapUniqueKeysMethod);
+  else
+   gen.invokeStatic(RT_TYPE, mapMethod);
+  if(ctx == C.STATEMENT) gen.pop();
+ }
+}
 #+end_src
 
 * Analyze + Eval: Our fn is compiled!
 
 We now have the equivalent of this Java class:
 #+begin_src java
-public final class a_map$m extends clojure.lang.AFunction {
-  public static final clojure.lang.Keyword FOO = RT.keyword(null, "foo");
-  public static final clojure.lang.Keyword BAZ = RT.keyword(null, "baz");
+public final class a_map$m
+  extends clojure.lang.AFunction {
+ public static final clojure.lang.Keyword FOO =
+   RT.keyword(null, "foo");
+ public static final clojure.lang.Keyword BAZ =
+   RT.keyword(null, "baz");
 
-  @Override
-  public Object invoke(Object) {
-    return RT.mapUniqueKeys(new Object[] {FOO, "bar", BAZ, arg});
-  }
+ @Override
+ public Object invoke(Object arg) {
+  return RT.mapUniqueKeys(
+    new Object[] {FOO, "bar", BAZ, arg});
+ }
 }
 #+end_src
 
@@ -286,6 +329,10 @@ That's equivalent to (Java)
   Questions?
 
 * Tangents
+
+  - If you want to mess with this sort of stuff,
+    consider clojure.tools.reader
+         and clojure.tools.analyzer.
 
   - clojure.tools.analyzer isn't as useful as I thought
     it would be for looking at the result of compiling
