@@ -8,14 +8,25 @@
 
 
 
-  Code excerpts have been edited for
-  readability and to fit this screen.
 
 
 
 
 
------------------------------------>:[-----:(---:|---:) <- ideal bottom-right of 1st slide in org-present mode.
+
+
+--------------------------------------->:[---:(--:|--:) <- ideal bottom-right of 1st slide in org-present mode.
+
+* Disclaimers
+
+  I'm no expert.
+
+  All internals are subject to change.
+
+  Code excerpts have been mangled for
+  readability,
+  presentation focus,
+  and to fit this screen.
 
 * The Life of What Clojure Expression?
 
@@ -28,7 +39,7 @@
 
 * So really,
 * The Life of a Certain Map-Literal Expression
-
+  in the body of a simple fn
   plus some discussion of minor variations:
 #+begin_src clojure
   ;; a constant
