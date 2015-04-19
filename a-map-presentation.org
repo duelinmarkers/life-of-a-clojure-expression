@@ -74,15 +74,17 @@
 #+begin_src java
 // clojure/lang/LispReader.java
 static IFn[] macros = new IFn[256];
-macros['{'] = new MapReader();
+static {
+  macros['{'] = new MapReader();
+  ,,,
+}
 ,,,
 static class MapReader extends AFn {
   public Object invoke(Object reader, Object _) {
     PushbackReader r = (PushbackReader) reader;
     Object[] a = readDelimitedList('}', ,,,);
     if((a.length & 1) == 1)
-      throw Util.runtimeException(
-            "Odd # of forms!");
+      throw Util.runtimeException("Odd # of forms!");
     return RT.map(a);
   }
 }
@@ -199,8 +201,10 @@ public static Object eval(Object form, boolean fresh) {
 #+begin_src java
 static Expr analyze(C ctx, Object form, String name) {
  Class fclass = form.getClass();
- if(fclass == Symbol.class) { return analyzeSymbol((Symbol) form); }
- else if(fclass == Keyword.class) { ,,, }
+ if(fclass == Symbol.class)
+   return analyzeSymbol((Symbol) form);
+ else if(fclass == Keyword.class)
+   return registerKeyword((Keyword) form);
  /* etc, etc */
  else if(form instanceof ISeq)
   return analyzeSeq(ctx, (ISeq) form, name);
@@ -296,17 +300,17 @@ public static class MapExpr implements Expr{
 We now have the equivalent of this Java class:
 #+begin_src java
 public final class a_map$m
-  extends clojure.lang.AFunction {
- public static final clojure.lang.Keyword FOO =
-   RT.keyword(null, "foo");
- public static final clojure.lang.Keyword BAZ =
-   RT.keyword(null, "baz");
+             extends clojure.lang.AFunction {
+  public static final clojure.lang.Keyword FOO =
+    RT.keyword(null, "foo");
+  public static final clojure.lang.Keyword BAZ =
+    RT.keyword(null, "baz");
 
- @Override
- public Object invoke(Object arg) {
-  return RT.mapUniqueKeys(
-    new Object[] {FOO, "bar", BAZ, arg});
- }
+  @Override
+  public Object invoke(Object arg) {
+    return RT.mapUniqueKeys(
+      new Object[] {FOO, "bar", BAZ, arg});
+  }
 }
 #+end_src
 
