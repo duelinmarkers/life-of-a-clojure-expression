@@ -154,14 +154,18 @@ Before we look at the real thing:
 
 What's an Expr?
 #+begin_src java
- interface Expr {
-  // Often:
-  // static Expr parse(Object form);
-  Object eval();
-  void emit(C ctx, ObjExpr objx, GeneratorAdapter gen);
-  boolean hasJavaClass();
-  Class getJavaClass();
- }
+interface Expr {
+ Object eval();
+ void emit(C ctx, ObjExpr objx, GeneratorAdapter gen);
+ boolean hasJavaClass();
+ Class getJavaClass();
+ // Often:
+ //  static Expr parse(C ctx, CORRECT_TYPE form);
+ // For most special forms, there an IParser:
+ //  interface IParser{
+ //    Expr parse(C ctx, Object form) ;
+ //  }
+}
 #+end_src
 
 * Analyze + Eval: "real" eval
