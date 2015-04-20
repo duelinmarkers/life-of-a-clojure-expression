@@ -322,13 +322,13 @@ public final class a_map$m
 
 Some clj fn has this:
 #+begin_src clojure
-  (m "my val")
+  (m "Thanks")
 #+end_src
 That's equivalent to (Java)
 #+begin_src java
   M_VAR               // static const in caller's class
     .getRawRoot()     // reads a volatile
-    .invoke("my val") // invokeinterface
+    .invoke("Thanks") // invokeinterface
 #+end_src
 
 * Runtime - mapUniqueKeys
@@ -344,6 +344,10 @@ That's equivalent to (Java)
 #+end_src
 
 * That's It
+
+#+begin_src clojure
+  {:foo "bar" :baz "Thanks"}
+#+end_src
 
   Questions?
 
